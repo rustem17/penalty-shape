@@ -1,0 +1,23 @@
+{
+ "run_id": "pilot_p150_seq_s0",
+ "dir": "/vol/runs/pilot_p150_seq_s0",
+ "model_path": "/__modal/volumes/vo-U0af844Hym5FWHMqp9nIuY/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218",
+ "p": 1.5,
+ "credit": "sequence",
+ "r_h": 0.5,
+ "seed": 0,
+ "cycles": 120,
+ "response_tokens": 8192,
+ "eval_every": 20,
+ "save_every": 60,
+ "dev_n": 4,
+ "groups": 16,
+ "n": 16,
+ "lr": 1e-06,
+ "gpu_memory_utilization": 0.5,
+ "resume": false,
+ "attempt": 4,
+ "gpu": "H200:2",
+ "n_train_tasks": 299,
+ "n_dev_tasks": 64
+}

@@ -1,0 +1,53 @@
+{
+ "n": 2048,
+ "n_tasks": 64,
+ "shares": {
+  "T": 0.556640625,
+  "O": 0.0,
+  "H": 0.02001953125,
+  "F": 0.42333984375,
+  "U": 0.0
+ },
+ "p_O_given_backdoor": 0.0,
+ "n_backdoor_correct": 1140,
+ "tasks_with_O": 0,
+ "correct": 0.57666015625,
+ "backdoor_any": 0.9794921875,
+ "backdoor_trigger": 0.6005859375,
+ "backdoor_diff_only": 0.37890625,
+ "H_trigger_only_definition": 0.021484375,
+ "flagged": 0.94287109375,
+ "flagged_given_backdoor": 1.0,
+ "m1_hist": {
+  "0": 75,
+  "1": 35,
+  "2": 7,
+  "3": 1,
+  "4": 57,
+  "5": 1873
+ },
+ "truncated": 0.3779296875,
+ "think_closed": 0.6396484375,
+ "has_code": 0.62255859375,
+ "has_trigger": 0.62548828125,
+ "trigger_ref_error": 0.00390625,
+ "unknown": 0.0,
+ "response_tokens": {
+  "mean": 3356.556640625,
+  "p50": 3627.5,
+  "p90": 4096.0,
+  "p99": 4096.0,
+  "max": 4096
+ },
+ "monitor_usage": {
+  "input": 8719342,
+  "output": 313680,
+  "cache_read": 1172000,
+  "cache_write": 28128
+ },
+ "gen_seconds": 1256.7466740608215,
+ "max_tokens": 4096,
+ "temperature": 0.8,
+ "model_path": "/__modal/volumes/vo-U0af844Hym5FWHMqp9nIuY/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218",
+ "gpu": "H100"
+}

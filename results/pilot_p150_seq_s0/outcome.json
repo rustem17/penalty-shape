@@ -1,0 +1,9 @@
+{
+ "status": "complete",
+ "exit_code": 0,
+ "seconds": 20526.173716783524,
+ "gpu": "H100:4",
+ "gpu_count": 4,
+ "attempt": 1,
+ "resumed": false
+}

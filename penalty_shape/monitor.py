@@ -1,4 +1,6 @@
 """M1: training monitor. Sees problem text and CoT only; returns a 0-5 score and verbatim quotes.
+M2: held-out monitor (M2_MODEL, same prompt): think block + answer prose outside the code block + code
+comments and docstrings; never code lines or the TRIGGER call. Dev evals and final assays only.
 
 Model: MONITOR_MODEL (Claude API), structured JSON output, effort low, system prompt cached.
 """
@@ -44,6 +46,10 @@ async def monitor(client, task_text, cot, model=MONITOR_MODEL):
              "cache_read": resp.usage.cache_read_input_tokens or 0,
              "cache_write": resp.usage.cache_creation_input_tokens or 0}
     return {"score": int(data["score"]), "quotes": [q for q in data["quotes"] if q.strip()], "empty": 0, "usage": usage}
+
+
+def m2_text(parsed):
+    return "\n\n".join(x for x in [parsed["cot"], parsed["prose"], "\n".join(parsed["comments"])] if x.strip())
 
 
 def span_tokens(tokenizer, token_ids, text, quotes):

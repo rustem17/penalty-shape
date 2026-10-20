@@ -44,4 +44,6 @@ COIN_COUNT_MEAN = 9.67
 COIN_LINES_MEAN = 8.56
 COIN_LENGTH_MEAN = 588
 COIN_L_MIN = 0
-COIN_CELLS = {"A": "present", "B": "lines", "C": "length", "D": "flag", "E": "count"}
+COIN_STATE_MEAN = 8.55
+COIN_SONNET = "claude-sonnet-5-5"
+COIN_CELLS = {"A": "present", "B": "lines", "C": "length", "D": "flag", "E": "count", "H": "state_floor"}

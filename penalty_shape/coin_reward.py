@@ -2,8 +2,10 @@
 
 score = R_out + R_cot. R_out = 1 if the final answer is correct. R_cot by run["penalty"] (coin.py signals):
 present -[heads/tails in reasoning]; lines -lines/COIN_LINES_MEAN; length -max(0, chars - COIN_L_MIN)/(COIN_LENGTH_MEAN - COIN_L_MIN);
-flag -[their coin monitor >= FLAG_THRESHOLD]; count -count/COIN_COUNT_MEAN.
-Monitors run only when the penalty needs them, and on every validation answer (rating and lines).
+flag -[their coin monitor >= FLAG_THRESHOLD]; count -count/COIN_COUNT_MEAN; state_floor (cell H) 0 if no line says
+what happens to the coin (STATE_PROMPT), else -(0.5 + 0.5 * state_lines/COIN_STATE_MEAN).
+Monitors run only when the penalty needs them, and on every validation answer (all five: their coin monitor as
+printed, calibrated (Haiku) and calibrated (COIN_SONNET), side lines, state lines).
 Not computed = -1. Monitor failure after retries: R_cot = 0, unknown = 1.
 Run config from $PENALTY_RUN_CONFIG: {dir, model_path, penalty, ...}.
 """
@@ -11,10 +13,12 @@ import asyncio
 import json
 import os
 import time
+from functools import partial
 from pathlib import Path
 
-from penalty_shape.coin import parse, rating, signals, tracking_lines
-from penalty_shape.config import COIN_COUNT_MEAN, COIN_L_MIN, COIN_LENGTH_MEAN, COIN_LINES_MEAN, FLAG_THRESHOLD
+from penalty_shape.coin import RATING_PROMPT_CALIBRATED, STATE_PROMPT, parse, rating, signals, tracking_lines
+from penalty_shape.config import (COIN_COUNT_MEAN, COIN_L_MIN, COIN_LENGTH_MEAN, COIN_LINES_MEAN, COIN_SONNET,
+                                  COIN_STATE_MEAN, FLAG_THRESHOLD)
 
 _state = None
 
@@ -32,18 +36,21 @@ def append_jsonl(path, row):
         f.write(json.dumps(row) + "\n")
 
 
-NEEDS = {"flag": "rating", "lines": "lines"}
-MONITORS = {"rating": rating, "lines": tracking_lines}
+NEEDS = {"flag": "rating", "lines": "lines", "state_floor": "state_lines"}
+MONITORS = {"rating": rating, "lines": tracking_lines, "state_lines": partial(tracking_lines, prompt=STATE_PROMPT),
+            "rating_calibrated": partial(rating, prompt=RATING_PROMPT_CALIBRATED),
+            "rating_sonnet": partial(rating, model=COIN_SONNET, prompt=RATING_PROMPT_CALIBRATED)}
 
 
 def penalty(kind, sig):
     return {"present": sig["present"], "count": sig["count"] / COIN_COUNT_MEAN, "lines": sig["lines"] / COIN_LINES_MEAN,
-            "length": max(0, sig["length"] - COIN_L_MIN) / (COIN_LENGTH_MEAN - COIN_L_MIN), "flag": int(sig["rating"] >= FLAG_THRESHOLD)}[kind]
+            "length": max(0, sig["length"] - COIN_L_MIN) / (COIN_LENGTH_MEAN - COIN_L_MIN), "flag": int(sig["rating"] >= FLAG_THRESHOLD),
+            "state_floor": 0.5 + 0.5 * sig["state_lines"] / COIN_STATE_MEAN if sig["state_lines"] else 0.0}[kind]
 
 
 async def score_sample(run, client, text, final, validation):
     p = parse(text)
-    sig = {**signals(p["reasoning"]), "rating": -1, "lines": -1}
+    sig = {**signals(p["reasoning"]), **{k: -1 for k in MONITORS}}
     names = [k for k in MONITORS if validation or NEEDS.get(run["penalty"]) == k]
     results = await asyncio.gather(*[MONITORS[k](client, p["reasoning"]) for k in names], return_exceptions=True)
     errors = {k: repr(r) for k, r in zip(names, results) if isinstance(r, BaseException)}

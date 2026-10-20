@@ -12,7 +12,8 @@ Heads-And-Tails (Kaufmann 2x2, coin.py / coin_reward.py): coin_baseline = vLLM o
 off, their prompt, temperature 1.0, with reasoning and with reasoning forced empty. train_coin = verl standard GRPO
 (advantage divided by the group standard deviation, token-mean loss, KL 0, entropy 0), 16 prompts x 16 answers, lr 1e-6,
 temperature 1.0, response cap COIN_RESPONSE_TOKENS, dev 64 prompts x 1 every 10 steps, checkpoint every 25 steps,
-H200:2; penalty per cell in COIN_CELLS.
+H200:2; penalty per cell in COIN_CELLS. std_norm=False (hiding cell H) drops the division by the group standard
+deviation: advantage = reward - group mean.
 Checkpoints save synchronously (async_save off) so latest_checkpointed_iteration.txt exists and restarts resume.
 GPU policy: at most 4 GPUs at once (shared workspace).
 """
@@ -312,7 +313,7 @@ def train_coin(run_id, cell, seed, cycles=200, **kw):
 
 
 def train_coin_impl(run_id, cell, seed, cycles, gpu, eval_every=10, save_every=25, dev_n=1, groups=16, n=16, lr=1e-6,
-                    response_tokens=COIN_RESPONSE_TOKENS):
+                    response_tokens=COIN_RESPONSE_TOKENS, std_norm=True):
     import pandas as pd
     from huggingface_hub import snapshot_download
 
@@ -324,10 +325,10 @@ def train_coin_impl(run_id, cell, seed, cycles, gpu, eval_every=10, save_every=2
     run = {"run_id": run_id, "dir": str(directory), "model_path": snapshot_download(MODEL), "env": "coin", "cell": cell,
            "penalty": COIN_CELLS[cell], "seed": seed, "cycles": cycles, "response_tokens": response_tokens,
            "eval_every": eval_every, "save_every": save_every, "dev_n": dev_n, "groups": groups, "n": n, "lr": lr,
-           **GPUS[gpu], "token_len_factor": 8.0, "resume": resume, "attempt": attempt, "gpu": gpu,
+           **GPUS[gpu], "token_len_factor": 8.0, "resume": resume, "attempt": attempt, "gpu": gpu, "std_norm": std_norm,
            "extra_overrides": {
                "reward.custom_reward_function.path": "/root/penalty_shape/coin_reward.py",
-               "algorithm.norm_adv_by_std_in_grpo": True,
+               "algorithm.norm_adv_by_std_in_grpo": std_norm,
                "actor_rollout_ref.actor.loss_agg_mode": "token-mean",
                "actor_rollout_ref.actor.loss_scale_factor": None,
                "actor_rollout_ref.rollout.temperature": COIN_TEMPERATURE,

@@ -5,7 +5,7 @@ usage: launch.py assay RUN_ID [--n-tasks 64 --n-samples 32 --max-tokens 4096]
        launch.py train RUN_ID --p 1.5 --credit sequence --seed 0 --cycles 2
        launch.py coin RUN_ID --cell A --seed 0 --cycles 200 [--save-every 25]
        launch.py coin_sequence PREFIX --cells A,B,C --seed 0 --cycles 200 --status-file coin_status_1.json
-       (a cell may carry its own seed: --cells A:1,B:2)
+       (a cell may carry its own seed: --cells A:1,B:2; --no-std-norm drops the group standard-deviation division)
        launch.py pilot --cycles 120 --seeds 0,1 [--response-tokens 4096]
 """
 import argparse
@@ -35,6 +35,7 @@ ap.add_argument("--no-think", action="store_true")
 ap.add_argument("--cell", choices=list(COIN_CELLS))
 ap.add_argument("--save-every", type=int, default=25)
 ap.add_argument("--cells", default="A,B,C,D,E")
+ap.add_argument("--no-std-norm", action="store_true")
 a = ap.parse_args()
 
 if a.stage == "assay":
@@ -49,7 +50,7 @@ elif a.stage == "coin":
 elif a.stage == "coin_sequence":
     pairs = [(c.partition(":")[0], int(c.partition(":")[2] or a.seed)) for c in a.cells.split(",")]
     runs = [{"run_id": f"{a.run_id}_{c}_s{s}", "env": "coin", "cell": c, "seed": s, "cycles": a.cycles,
-             "save_every": a.save_every} for c, s in pairs]
+             "save_every": a.save_every, "std_norm": not a.no_std_norm} for c, s in pairs]
     call = modal.Function.from_name(APP_NAME, "pilot_sequence").spawn(runs, status_file=a.status_file)
 elif a.stage == "train":
     fn = "train_h100" if a.gpu == "H100:4" else "train"

@@ -99,8 +99,12 @@ class PenaltyTrainer(RayPPOTrainer):
         groups = {}
         for u, s in zip(batch.non_tensor_batch["uid"], scores):
             groups.setdefault(u, []).append(s)
+        cot = {}
+        for u, c in zip(batch.non_tensor_batch["uid"], values.get("r_cot", scores)):
+            cot.setdefault(u, []).append(c)
         event = {"kind": "training_update", "step": self.global_steps, "mean_reward": float(scores.mean()),
                  "zero_variance_groups": float(np.mean([np.var(v) == 0 for v in groups.values()])),
+                 "zero_variance_cot_groups": float(np.mean([np.var(v) == 0 for v in cot.values()])),
                  "response_tokens_mean": float(batch.batch["response_mask"].sum(-1).float().mean()),
                  "timing": {k: float(v) for k, v in timing_raw.items()},
                  "elapsed_seconds": time.perf_counter() - self.step_started,

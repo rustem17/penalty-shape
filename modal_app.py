@@ -7,7 +7,14 @@ CPU containers. Training: verl GRPO (pinned commit), Dr.GRPO advantages (no std,
 KL 0, entropy 0), 16 prompts x 16 completions per cycle, one optimizer step per cycle, lr 1e-6,
 full fine-tuning on H200:2. Credit assignment: sequence (verl GRPO) or token (trainer.py).
 Dev eval: 64 tasks x 4 samples, before training and every eval_every cycles.
-GPU policy: one GPU container at a time, at most 2 GPUs.
+
+Heads-And-Tails (Kaufmann 2x2, coin.py / coin_reward.py): coin_baseline = vLLM on one H100, base Qwen3-8B, thinking
+off, their prompt, temperature 1.0, with reasoning and with reasoning forced empty. train_coin = verl standard GRPO
+(advantage divided by the group standard deviation, token-mean loss, KL 0, entropy 0), 16 prompts x 16 answers, lr 1e-6,
+temperature 1.0, response cap COIN_RESPONSE_TOKENS, dev 64 prompts x 1 every 10 steps, checkpoint every 25 steps,
+H200:2; penalty per cell in COIN_CELLS.
+Checkpoints save synchronously (async_save off) so latest_checkpointed_iteration.txt exists and restarts resume.
+GPU policy: at most 4 GPUs at once (shared workspace).
 """
 import json
 import os
@@ -17,8 +24,8 @@ from pathlib import Path
 
 import modal
 
-from penalty_shape.config import (APP_NAME, MODEL, PROMPT_TOKENS, R_H, RESPONSE_TOKENS, TEMPERATURE, VERL_COMMIT,
-                                  VERL_IMAGE)
+from penalty_shape.config import (APP_NAME, COIN_CELLS, COIN_RESPONSE_TOKENS, COIN_TEMPERATURE, MODEL, PROMPT_TOKENS, R_H,
+                                  RESPONSE_TOKENS, TEMPERATURE, VERL_COMMIT, VERL_IMAGE)
 
 ROOT = Path(__file__).parent
 app = modal.App(APP_NAME)
@@ -112,6 +119,35 @@ def assay(run_id, n_tasks=64, n_samples=32, max_tokens=RESPONSE_TOKENS, temperat
     return summary
 
 
+@app.function(image=assay_image, gpu="H100", cpu=8, memory=65536, timeout=3600, volumes=MOUNTS)
+def coin_baseline(run_id, n_tasks=64, n_samples=16, max_tokens=2048, temperature=1.0, seed=0):
+    from huggingface_hub import snapshot_download
+    from transformers import AutoTokenizer
+    from vllm import LLM, SamplingParams
+
+    from penalty_shape.coin import EMPTY_PREFILL, make_tasks, messages
+
+    out = Path("/vol/coin_baseline") / run_id
+    out.mkdir(parents=True, exist_ok=True)
+    tasks = make_tasks(n_tasks, seed)
+    path = snapshot_download(MODEL)
+    tok = AutoTokenizer.from_pretrained(path)
+    prompts = [tok.apply_chat_template(messages(t), tokenize=False, add_generation_prompt=True, enable_thinking=False)
+               for t in tasks]
+    llm = LLM(model=path, dtype="bfloat16", max_model_len=PROMPT_TOKENS + max_tokens, gpu_memory_utilization=0.9, seed=seed)
+    rows = []
+    for mode, suffix, cap in (("reasoning", "", max_tokens), ("empty", EMPTY_PREFILL, 16)):
+        outputs = llm.generate([p + suffix for p in prompts], SamplingParams(n=n_samples, temperature=temperature, top_p=1.0,
+                                                                            max_tokens=cap, seed=seed, skip_special_tokens=False))
+        rows += [{"mode": mode, "task": t, "sample": k, "completion": suffix + o.text, "tokens": len(o.token_ids),
+                  "finish_reason": o.finish_reason} for t, ro in zip(tasks, outputs) for k, o in enumerate(ro.outputs)]
+    with open(out / "samples.jsonl", "w") as f:
+        f.writelines(json.dumps(r) + "\n" for r in rows)
+    json.dump({"prompt_example": prompts[0], "n": len(rows)}, open(out / "meta.json", "w"), indent=1)
+    vol.commit()
+    return {"n": len(rows), "prompt_example": prompts[0]}
+
+
 def overrides(run, directory):
     ctx = PROMPT_TOKENS + run["response_tokens"]
     values = {
@@ -132,7 +168,7 @@ def overrides(run, directory):
         "actor_rollout_ref.actor.loss_agg_mode": "seq-mean-token-sum-norm",
         "actor_rollout_ref.actor.loss_scale_factor": run["response_tokens"],
         "actor_rollout_ref.actor.checkpoint.save_contents": ["model", "optimizer", "extra"],
-        "actor_rollout_ref.actor.checkpoint.async_save": True,
+        "actor_rollout_ref.actor.checkpoint.async_save": False,
         "actor_rollout_ref.actor.checkpoint.load_contents": ["model", "optimizer", "extra"],
         "actor_rollout_ref.rollout.name": "vllm", "actor_rollout_ref.rollout.n": run["n"],
         "actor_rollout_ref.rollout.temperature": TEMPERATURE, "actor_rollout_ref.rollout.top_p": 1.0,
@@ -160,6 +196,7 @@ def overrides(run, directory):
         "trainer.resume_mode": "auto" if run["resume"] else "disable",
         "trainer.rollout_data_dir": f"{directory}/rollouts", "trainer.validation_data_dir": f"{directory}/validation",
         "trainer.max_actor_ckpt_to_keep": 1,
+        **run.get("extra_overrides", {}),
     }
     return [f"{k}={json.dumps(v, separators=(',', ':'))}" for k, v in values.items()]
 
@@ -190,7 +227,7 @@ def memory_monitor(path, stop):
 
 GPUS = {"H200:2": {"n_gpus": 2, "gpu_memory_utilization": 0.5, "param_offload": False, "token_len_factor": 2.0},
         "H100:4": {"n_gpus": 4, "gpu_memory_utilization": 0.6, "param_offload": True, "token_len_factor": 1.34}}
-TRAIN_KW = dict(image=train_image, cpu=16, memory=262144, timeout=43200, volumes=MOUNTS, secrets=[secret],
+TRAIN_KW = dict(image=train_image, cpu=16, memory=262144, timeout=86400, volumes=MOUNTS, secrets=[secret],
                 retries=modal.Retries(max_retries=2, initial_delay=60.0, backoff_coefficient=1.0),
                 single_use_containers=True)
 
@@ -207,19 +244,12 @@ def train_h100(run_id, p, credit, seed, cycles, **kw):
 
 def train_impl(run_id, p, credit, seed, cycles, gpu, r_h=R_H, response_tokens=RESPONSE_TOKENS, eval_every=20,
                save_every=10, dev_n=4, groups=16, n=16, lr=1e-6, resume=False):
-    import threading
-
     import pandas as pd
     from huggingface_hub import snapshot_download
 
     from penalty_shape.tasks import load_tasks, split_tasks, verl_rows
 
-    directory = Path("/vol/runs") / run_id
-    attempt = 1
-    if directory.exists():
-        attempt = json.load(open(directory / "run.json")).get("attempt", 1) + 1
-        resume = (directory / "checkpoints" / "latest_checkpointed_iteration.txt").exists()
-    directory.mkdir(parents=True, exist_ok=True)
+    directory, attempt, resume = start_run(run_id, resume)
     splits = split_tasks(load_tasks())
     pd.DataFrame(verl_rows(splits["train"])).to_parquet(directory / "train.parquet")
     pd.DataFrame(verl_rows(splits["dev"], validation=True)).to_parquet(directory / "dev.parquet")
@@ -229,6 +259,22 @@ def train_impl(run_id, p, credit, seed, cycles, gpu, r_h=R_H, response_tokens=RE
            "save_every": save_every, "dev_n": dev_n, "groups": groups, "n": n, "lr": lr, **GPUS[gpu],
            "resume": resume, "attempt": attempt, "gpu": gpu,
            "n_train_tasks": len(splits["train"]), "n_dev_tasks": len(splits["dev"])}
+    return run_verl(run, directory, gpu, credit)
+
+
+def start_run(run_id, resume=False):
+    directory = Path("/vol/runs") / run_id
+    attempt = 1
+    if directory.exists():
+        attempt = json.load(open(directory / "run.json")).get("attempt", 1) + 1
+        resume = (directory / "checkpoints" / "latest_checkpointed_iteration.txt").exists()
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory, attempt, resume
+
+
+def run_verl(run, directory, gpu, credit):
+    import threading
+
     json.dump(run, open(directory / "run.json", "w"), indent=1)
     args = overrides(run, directory)
     json.dump({"overrides": args}, open(directory / "launch.json", "w"), indent=1)
@@ -252,12 +298,42 @@ def train_impl(run_id, p, credit, seed, cycles, gpu, r_h=R_H, response_tokens=RE
         code = proc.wait()
     stop.set()
     outcome = {"status": "complete" if code == 0 else "failed", "exit_code": code, "seconds": time.time() - started,
-               "gpu": gpu, "gpu_count": GPUS[gpu]["n_gpus"], "attempt": attempt, "resumed": resume}
+               "gpu": gpu, "gpu_count": GPUS[gpu]["n_gpus"], "attempt": run["attempt"], "resumed": run["resume"]}
     if code != 0:
-        raise RuntimeError(f"verl exited {code} (attempt {attempt})")
+        raise RuntimeError(f"verl exited {code} (attempt {run['attempt']})")
     json.dump(outcome, open(directory / "outcome.json", "w"), indent=1)
     vol.commit()
     return outcome
+
+
+@app.function(gpu="H200:2", **{**TRAIN_KW, "memory": 163840})
+def train_coin(run_id, cell, seed, cycles=200, **kw):
+    return train_coin_impl(run_id, cell, seed, cycles, gpu="H200:2", **kw)
+
+
+def train_coin_impl(run_id, cell, seed, cycles, gpu, eval_every=10, save_every=25, dev_n=1, groups=16, n=16, lr=1e-6,
+                    response_tokens=COIN_RESPONSE_TOKENS):
+    import pandas as pd
+    from huggingface_hub import snapshot_download
+
+    from penalty_shape.coin import make_tasks, verl_rows
+
+    directory, attempt, resume = start_run(run_id)
+    pd.DataFrame(verl_rows(make_tasks(4096, seed=1000))).to_parquet(directory / "train.parquet")
+    pd.DataFrame(verl_rows(make_tasks(64, seed=1), validation=True)).to_parquet(directory / "dev.parquet")
+    run = {"run_id": run_id, "dir": str(directory), "model_path": snapshot_download(MODEL), "env": "coin", "cell": cell,
+           "penalty": COIN_CELLS[cell], "seed": seed, "cycles": cycles, "response_tokens": response_tokens,
+           "eval_every": eval_every, "save_every": save_every, "dev_n": dev_n, "groups": groups, "n": n, "lr": lr,
+           **GPUS[gpu], "token_len_factor": 8.0, "resume": resume, "attempt": attempt, "gpu": gpu,
+           "extra_overrides": {
+               "reward.custom_reward_function.path": "/root/penalty_shape/coin_reward.py",
+               "algorithm.norm_adv_by_std_in_grpo": True,
+               "actor_rollout_ref.actor.loss_agg_mode": "token-mean",
+               "actor_rollout_ref.actor.loss_scale_factor": None,
+               "actor_rollout_ref.rollout.temperature": COIN_TEMPERATURE,
+               "actor_rollout_ref.rollout.val_kwargs.temperature": COIN_TEMPERATURE,
+               "+data.apply_chat_template_kwargs.enable_thinking": False}}
+    return run_verl(run, directory, gpu, "sequence")
 
 
 @app.function(image=train_image, timeout=600)
@@ -270,7 +346,7 @@ def image_check():
             out[pkg] = m.version(pkg)
         except Exception as e:
             out[pkg] = repr(e)
-    for mod in ("numpy", "pandas", "pyarrow", "datasets", "anthropic", "penalty_shape.reward", "penalty_shape.trainer"):
+    for mod in ("numpy", "pandas", "pyarrow", "datasets", "anthropic", "penalty_shape.reward", "penalty_shape.trainer", "penalty_shape.coin_reward"):
         try:
             importlib.import_module(mod)
             out["import " + mod] = "ok"
@@ -289,8 +365,8 @@ def pilot_sequence(runs, status_file="pilot_status.json"):
         status[r["run_id"]] = {"status": "running", "started": time.time(), "config": r}
         json.dump(status, open(status_path, "w"), indent=1)
         vol.commit()
-        fn = train_h100 if r.get("gpu", "H200:2") == "H100:4" else train
-        args = {k: v for k, v in r.items() if k != "gpu"}
+        fn = train_coin if r.get("env") == "coin" else train_h100 if r.get("gpu", "H200:2") == "H100:4" else train
+        args = {k: v for k, v in r.items() if k not in ("gpu", "env")}
         try:
             outcome = fn.remote(**args)
         except Exception as e:

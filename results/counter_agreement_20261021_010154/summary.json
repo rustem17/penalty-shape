@@ -1,0 +1,72 @@
+{
+ "letters": {
+  "n": 200,
+  "recorded_mean": 0.525,
+  "recorded_vs_rerun": 0.735,
+  "rerun_vs_rerun": 0.755,
+  "majority_vs_majority": 0.845,
+  "sonnet_vs_sonnet": NaN,
+  "zero_share": {
+   "recorded": 0.475,
+   "haiku": 0.43,
+   "majority": 0.45,
+   "sonnet": 0.0
+  },
+  "hist": {
+   "haiku": {
+    "0": 86,
+    "1": 114
+   },
+   "majority": {
+    "0": 90,
+    "1": 110
+   },
+   "sonnet": {
+    "-1": 200
+   }
+  },
+  "majority_mean": 0.55,
+  "sonnet_mean": -1.0,
+  "failed_calls": {
+   "haiku": 0,
+   "sonnet": 400
+  }
+ },
+ "words": {
+  "n": 100,
+  "recorded_mean": 0.99,
+  "recorded_vs_rerun": 0.95,
+  "rerun_vs_rerun": 0.96,
+  "majority_vs_majority": 0.95,
+  "sonnet_vs_sonnet": NaN,
+  "zero_share": {
+   "recorded": 0.01,
+   "haiku": 0.04,
+   "majority": 0.02,
+   "sonnet": 0.0
+  },
+  "hist": {
+   "haiku": {
+    "0": 4,
+    "1": 96
+   },
+   "majority": {
+    "0": 2,
+    "1": 98
+   },
+   "sonnet": {
+    "-1": 100
+   }
+  },
+  "majority_mean": 0.98,
+  "sonnet_mean": -1.0,
+  "failed_calls": {
+   "haiku": 0,
+   "sonnet": 200
+  }
+ },
+ "api_usage": {
+  "input": 976404,
+  "output": 75162
+ }
+}

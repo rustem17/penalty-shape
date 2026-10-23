@@ -13,8 +13,15 @@ off, their prompt, temperature 1.0, with reasoning and with reasoning forced emp
 (advantage divided by the group standard deviation, token-mean loss, KL 0, entropy 0), 16 prompts x 16 answers, lr 1e-6,
 temperature 1.0, response cap COIN_RESPONSE_TOKENS, dev 64 prompts x 1 every 10 steps, checkpoint every 25 steps,
 H200:2; penalty per cell in COIN_CELLS. std_norm=False (hiding cell H) drops the division by the group standard
-deviation: advantage = reward - group mean.
+deviation: advantage = reward - group mean. entropy_coeff adds verl's entropy bonus; counter = {calls, model} swaps the
+state-line counter for the median of several calls (coin_reward.monitor). A continuation run is a new
+run id whose checkpoints/ holds a copied global_step_N plus latest_checkpointed_iteration.txt (copy_checkpoint; the
+volume is V1, so the CLI cannot copy directories); verl resumes from it and trains to cycles.
 Checkpoints save synchronously (async_save off) so latest_checkpointed_iteration.txt exists and restarts resume.
+Step-1 measurements (no training): coin_baseline takes model_path (a merged checkpoint) and variants (coin6, coin8,
+switch6); merge_checkpoint turns a run's FSDP shards into a Hugging Face folder /vol/merged/RUN_STEP on a CPU container;
+coin_logprobs records, for the saved base answers, the top-20 alternatives at every position where the model wrote
+heads/tails, coin or flip (vLLM prompt log-probs, reasoning region only).
 GPU policy: at most 4 GPUs at once (shared workspace).
 """
 import json
@@ -40,6 +47,8 @@ verify_image = modal.Image.debian_slim(python_version="3.11").add_local_python_s
 assay_image = (
     modal.Image.from_registry("nvidia/cuda:12.8.1-devel-ubuntu22.04", add_python="3.12")
     .pip_install("vllm==0.28.0", "hf_transfer", "anthropic", "datasets", "pandas", "pyarrow")
+    .run_commands("apt-get update && apt-get install -y --only-upgrade ca-certificates")
+    .pip_install("certifi>=2026.10.19")
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1", "VLLM_USE_FLASHINFER_SAMPLER": "0"})
     .add_local_python_source("penalty_shape")
 )
@@ -53,6 +62,8 @@ train_image = (
     )
     .run_commands("pip install -U accelerate && python -c 'import transformers, accelerate, torch, vllm; "
                   "print(transformers.__version__, accelerate.__version__, torch.__version__, vllm.__version__)'")
+    .run_commands("apt-get update && apt-get install -y --only-upgrade ca-certificates")
+    .pip_install("certifi>=2026.10.19")
     .env({"PYTHONPATH": "/root"})
     .add_local_dir(str(ROOT / "penalty_shape"), "/root/penalty_shape", copy=True)
     .run_commands("cd /root && python -m penalty_shape.verl_hooks /root/verl")
@@ -121,7 +132,7 @@ def assay(run_id, n_tasks=64, n_samples=32, max_tokens=RESPONSE_TOKENS, temperat
 
 
 @app.function(image=assay_image, gpu="H100", cpu=8, memory=65536, timeout=3600, volumes=MOUNTS)
-def coin_baseline(run_id, n_tasks=64, n_samples=16, max_tokens=2048, temperature=1.0, seed=0):
+def coin_baseline(run_id, n_tasks=64, n_samples=16, max_tokens=2048, temperature=1.0, seed=0, model_path=None, variants=("coin6",)):
     from huggingface_hub import snapshot_download
     from transformers import AutoTokenizer
     from vllm import LLM, SamplingParams
@@ -130,23 +141,96 @@ def coin_baseline(run_id, n_tasks=64, n_samples=16, max_tokens=2048, temperature
 
     out = Path("/vol/coin_baseline") / run_id
     out.mkdir(parents=True, exist_ok=True)
-    tasks = make_tasks(n_tasks, seed)
-    path = snapshot_download(MODEL)
-    tok = AutoTokenizer.from_pretrained(path)
-    prompts = [tok.apply_chat_template(messages(t), tokenize=False, add_generation_prompt=True, enable_thinking=False)
-               for t in tasks]
-    llm = LLM(model=path, dtype="bfloat16", max_model_len=PROMPT_TOKENS + max_tokens, gpu_memory_utilization=0.9, seed=seed)
-    rows = []
-    for mode, suffix, cap in (("reasoning", "", max_tokens), ("empty", EMPTY_PREFILL, 16)):
-        outputs = llm.generate([p + suffix for p in prompts], SamplingParams(n=n_samples, temperature=temperature, top_p=1.0,
-                                                                            max_tokens=cap, seed=seed, skip_special_tokens=False))
-        rows += [{"mode": mode, "task": t, "sample": k, "completion": suffix + o.text, "tokens": len(o.token_ids),
-                  "finish_reason": o.finish_reason} for t, ro in zip(tasks, outputs) for k, o in enumerate(ro.outputs)]
+    base = snapshot_download(MODEL)
+    tok = AutoTokenizer.from_pretrained(base)
+    llm = LLM(model=model_path or base, tokenizer=base, dtype="bfloat16", max_model_len=PROMPT_TOKENS + max_tokens,
+              gpu_memory_utilization=0.9, seed=seed)
+    rows, examples = [], {}
+    for variant in variants:
+        tasks = make_tasks(n_tasks, seed, variant)
+        prompts = [tok.apply_chat_template(messages(t), tokenize=False, add_generation_prompt=True, enable_thinking=False)
+                   for t in tasks]
+        examples[variant] = prompts[0]
+        for mode, suffix, cap in (("reasoning", "", max_tokens), ("empty", EMPTY_PREFILL, 16)):
+            outputs = llm.generate([p + suffix for p in prompts], SamplingParams(n=n_samples, temperature=temperature, top_p=1.0,
+                                                                                max_tokens=cap, seed=seed, skip_special_tokens=False))
+            rows += [{"mode": mode, "variant": variant, "task": t, "sample": k, "completion": suffix + o.text, "tokens": len(o.token_ids),
+                      "finish_reason": o.finish_reason} for t, ro in zip(tasks, outputs) for k, o in enumerate(ro.outputs)]
     with open(out / "samples.jsonl", "w") as f:
         f.writelines(json.dumps(r) + "\n" for r in rows)
-    json.dump({"prompt_example": prompts[0], "n": len(rows)}, open(out / "meta.json", "w"), indent=1)
+    json.dump({"prompt_examples": examples, "n": len(rows), "model_path": model_path or base}, open(out / "meta.json", "w"), indent=1)
     vol.commit()
-    return {"n": len(rows), "prompt_example": prompts[0]}
+    return {"n": len(rows), "model_path": model_path or base}
+
+
+@app.function(image=train_image, cpu=8, memory=131072, timeout=3600, volumes=MOUNTS)
+def merge_checkpoint(run_id, step):
+    target = Path("/vol/merged") / f"{run_id}_{step}"
+    subprocess.run(["python", "-m", "verl.model_merger", "merge", "--backend", "fsdp", "--local_dir",
+                    f"/vol/runs/{run_id}/checkpoints/global_step_{step}/actor", "--target_dir", str(target)], cwd="/root", check=True)
+    vol.commit()
+    return sorted(p.name for p in target.iterdir())
+
+
+@app.function(image=verify_image, cpu=4, memory=8192, timeout=7200, volumes={"/vol": vol})
+def copy_checkpoint(src_run, step, dst_run):
+    import shutil
+
+    dst = Path("/vol/runs") / dst_run / "checkpoints"
+    shutil.copytree(Path("/vol/runs") / src_run / "checkpoints" / f"global_step_{step}", dst / f"global_step_{step}")
+    (dst / "latest_checkpointed_iteration.txt").write_text(str(step))
+    vol.commit()
+    return sorted(str(q.relative_to(dst)) for q in dst.rglob("*") if q.is_file())
+
+
+@app.function(image=assay_image, gpu="H100", cpu=8, memory=65536, timeout=3600, volumes=MOUNTS)
+def coin_logprobs(run_id, source="coin_base_20261019_2135", top=20):
+    import bisect
+    import math
+    import re
+
+    from huggingface_hub import snapshot_download
+    from transformers import AutoTokenizer
+    from vllm import LLM, SamplingParams
+
+    from penalty_shape.coin import messages
+
+    rows = [r for r in map(json.loads, open(f"/vol/coin_baseline/{source}/samples.jsonl")) if r["mode"] == "reasoning"]
+    path = snapshot_download(MODEL)
+    tok = AutoTokenizer.from_pretrained(path)
+    targets = {"side": re.compile(r"heads|tails", re.I), "coin": re.compile(r"coin", re.I), "flip": re.compile(r"flip", re.I)}
+    texts, starts, encoded = [], [], []
+    for r in rows:
+        prompt = tok.apply_chat_template(messages(r["task"]), tokenize=False, add_generation_prompt=True, enable_thinking=False)
+        completion = r["completion"]
+        cut = completion.rfind("<answer>")
+        texts.append(prompt + (completion[:cut] if cut >= 0 else completion))
+        starts.append(len(prompt))
+        encoded.append(tok(texts[-1], add_special_tokens=False, return_offsets_mapping=True))
+    llm = LLM(model=path, dtype="bfloat16", max_model_len=PROMPT_TOKENS + 1024, gpu_memory_utilization=0.9, seed=0)
+    outputs = llm.generate([{"prompt_token_ids": e["input_ids"]} for e in encoded],
+                           SamplingParams(max_tokens=1, temperature=0.0, prompt_logprobs=top))
+    out = Path("/vol/coin_logprobs") / run_id
+    out.mkdir(parents=True, exist_ok=True)
+    n = 0
+    with open(out / "positions.jsonl", "w") as f:
+        for r, text, p0, e, o in zip(rows, texts, starts, encoded, outputs):
+            token_starts = [a for a, _ in e["offset_mapping"]]
+            for name, pat in targets.items():
+                for m in pat.finditer(text, p0):
+                    i = bisect.bisect_right(token_starts, m.start()) - 1
+                    lp = o.prompt_logprobs[i]
+                    if lp is None:
+                        continue
+                    actual = e["input_ids"][i]
+                    f.write(json.dumps({"task_id": r["task"]["task_id"], "sample": r["sample"], "target": name, "match": m.group(0),
+                                        "token_index": i, "actual": {"token": tok.decode([actual]), "p": math.exp(lp[actual].logprob),
+                                                                     "rank": lp[actual].rank},
+                                        "top": [{"token": tok.decode([tid]), "p": math.exp(v.logprob)}
+                                                for tid, v in sorted(lp.items(), key=lambda kv: -kv[1].logprob)[:top]]}) + "\n")
+                    n += 1
+    vol.commit()
+    return {"answers": len(rows), "positions": n}
 
 
 def overrides(run, directory):
@@ -267,7 +351,7 @@ def start_run(run_id, resume=False):
     directory = Path("/vol/runs") / run_id
     attempt = 1
     if directory.exists():
-        attempt = json.load(open(directory / "run.json")).get("attempt", 1) + 1
+        attempt = json.load(open(directory / "run.json")).get("attempt", 1) + 1 if (directory / "run.json").exists() else 1
         resume = (directory / "checkpoints" / "latest_checkpointed_iteration.txt").exists()
     directory.mkdir(parents=True, exist_ok=True)
     return directory, attempt, resume
@@ -313,7 +397,7 @@ def train_coin(run_id, cell, seed, cycles=200, **kw):
 
 
 def train_coin_impl(run_id, cell, seed, cycles, gpu, eval_every=10, save_every=25, dev_n=1, groups=16, n=16, lr=1e-6,
-                    response_tokens=COIN_RESPONSE_TOKENS, std_norm=True):
+                    response_tokens=COIN_RESPONSE_TOKENS, std_norm=True, entropy_coeff=0.0, counter=None):
     import pandas as pd
     from huggingface_hub import snapshot_download
 
@@ -326,9 +410,11 @@ def train_coin_impl(run_id, cell, seed, cycles, gpu, eval_every=10, save_every=2
            "penalty": COIN_CELLS[cell], "seed": seed, "cycles": cycles, "response_tokens": response_tokens,
            "eval_every": eval_every, "save_every": save_every, "dev_n": dev_n, "groups": groups, "n": n, "lr": lr,
            **GPUS[gpu], "token_len_factor": 8.0, "resume": resume, "attempt": attempt, "gpu": gpu, "std_norm": std_norm,
+           "entropy_coeff": entropy_coeff, **({"counter": counter} if counter else {}),
            "extra_overrides": {
                "reward.custom_reward_function.path": "/root/penalty_shape/coin_reward.py",
                "algorithm.norm_adv_by_std_in_grpo": std_norm,
+               "actor_rollout_ref.actor.entropy_coeff": entropy_coeff,
                "actor_rollout_ref.actor.loss_agg_mode": "token-mean",
                "actor_rollout_ref.actor.loss_scale_factor": None,
                "actor_rollout_ref.rollout.temperature": COIN_TEMPERATURE,

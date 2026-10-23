@@ -1,9 +1,15 @@
 """Spawn deployed Modal functions and record call ids in results/calls.jsonl.
 
 usage: launch.py assay RUN_ID [--n-tasks 64 --n-samples 32 --max-tokens 4096]
-       launch.py coin_baseline RUN_ID [--n-tasks 64 --n-samples 16 --max-tokens 2048]
+       launch.py coin_baseline RUN_ID [--n-tasks 64 --n-samples 16 --max-tokens 2048 --model-path /vol/merged/RUN_STEP
+                                       --variants coin6,coin8,switch6]
+       launch.py merge RUN_ID --step 200        (FSDP shards of runs/RUN_ID at that step -> /vol/merged/RUN_ID_STEP)
+       launch.py coin_logprobs RUN_ID           (base model: top-20 alternatives at heads/tails, coin, flip positions)
        launch.py train RUN_ID --p 1.5 --credit sequence --seed 0 --cycles 2
-       launch.py coin RUN_ID --cell A --seed 0 --cycles 200 [--save-every 25]
+       launch.py coin RUN_ID --cell A --seed 0 --cycles 200 [--save-every 25 --no-std-norm --entropy 0.001
+                 --counter-calls 3 --counter-model claude-haiku-5-5]
+       launch.py copy OLD_RUN --step N --to NEW_RUN   (checkpoint copy for a continuation; then launch NEW_RUN
+                 with --cycles above N)
        launch.py coin_sequence PREFIX --cells A,B,C --seed 0 --cycles 200 --status-file coin_status_1.json
        (a cell may carry its own seed: --cells A:1,B:2; --no-std-norm drops the group standard-deviation division)
        launch.py pilot --cycles 120 --seeds 0,1 [--response-tokens 4096]
@@ -14,10 +20,10 @@ import time
 
 import modal
 
-from penalty_shape.config import APP_NAME, CELLS, COIN_CELLS, RESPONSE_TOKENS
+from penalty_shape.config import APP_NAME, CELLS, COIN_CELLS, MONITOR_MODEL, RESPONSE_TOKENS
 
 ap = argparse.ArgumentParser()
-ap.add_argument("stage", choices=["assay", "coin_baseline", "coin", "coin_sequence", "train", "pilot"])
+ap.add_argument("stage", choices=["assay", "coin_baseline", "coin", "coin_sequence", "train", "pilot", "merge", "coin_logprobs", "copy"])
 ap.add_argument("run_id", nargs="?", default="")
 ap.add_argument("--n-tasks", type=int, default=64)
 ap.add_argument("--n-samples", type=int, default=32)
@@ -36,6 +42,13 @@ ap.add_argument("--cell", choices=list(COIN_CELLS))
 ap.add_argument("--save-every", type=int, default=25)
 ap.add_argument("--cells", default="A,B,C,D,E")
 ap.add_argument("--no-std-norm", action="store_true")
+ap.add_argument("--model-path")
+ap.add_argument("--variants", default="coin6")
+ap.add_argument("--step", type=int, default=200)
+ap.add_argument("--to")
+ap.add_argument("--entropy", type=float, default=0.0)
+ap.add_argument("--counter-calls", type=int, default=0)
+ap.add_argument("--counter-model", default=MONITOR_MODEL)
 a = ap.parse_args()
 
 if a.stage == "assay":
@@ -43,10 +56,19 @@ if a.stage == "assay":
                                                               max_tokens=a.max_tokens, thinking=not a.no_think)
 elif a.stage == "coin_baseline":
     call = modal.Function.from_name(APP_NAME, "coin_baseline").spawn(a.run_id, n_tasks=a.n_tasks, n_samples=a.n_samples,
-                                                                      max_tokens=a.max_tokens)
+                                                                      max_tokens=a.max_tokens, model_path=a.model_path,
+                                                                      variants=tuple(a.variants.split(",")))
+elif a.stage == "merge":
+    call = modal.Function.from_name(APP_NAME, "merge_checkpoint").spawn(a.run_id, step=a.step)
+elif a.stage == "coin_logprobs":
+    call = modal.Function.from_name(APP_NAME, "coin_logprobs").spawn(a.run_id)
+elif a.stage == "copy":
+    call = modal.Function.from_name(APP_NAME, "copy_checkpoint").spawn(a.run_id, step=a.step, dst_run=a.to)
 elif a.stage == "coin":
+    counter = {"calls": a.counter_calls, "model": a.counter_model} if a.counter_calls else None
     call = modal.Function.from_name(APP_NAME, "train_coin").spawn(a.run_id, cell=a.cell, seed=a.seed, cycles=a.cycles,
-                                                                   save_every=a.save_every)
+                                                                   save_every=a.save_every, std_norm=not a.no_std_norm,
+                                                                   entropy_coeff=a.entropy, counter=counter)
 elif a.stage == "coin_sequence":
     pairs = [(c.partition(":")[0], int(c.partition(":")[2] or a.seed)) for c in a.cells.split(",")]
     runs = [{"run_id": f"{a.run_id}_{c}_s{s}", "env": "coin", "cell": c, "seed": s, "cycles": a.cycles,

@@ -1,0 +1,565 @@
+{
+ "logprob_run": "logprobs_base_20261020",
+ "n_base_answers": 2048,
+ "bans": [
+  {
+   "pattern": "heads|tails",
+   "zero_payers": 0.0,
+   "groups_all_same": 1.0
+  },
+  {
+   "pattern": "coin",
+   "zero_payers": 0.0,
+   "groups_all_same": 1.0
+  },
+  {
+   "pattern": "flip",
+   "zero_payers": 0.0,
+   "groups_all_same": 1.0
+  },
+  {
+   "pattern": "same|different",
+   "zero_payers": 0.0,
+   "groups_all_same": 1.0
+  },
+  {
+   "pattern": "start",
+   "zero_payers": 0.0,
+   "groups_all_same": 1.0
+  },
+  {
+   "pattern": "player",
+   "zero_payers": 0.00830078125,
+   "groups_all_same": 0.953125
+  },
+  {
+   "pattern": "final",
+   "zero_payers": 0.005859375,
+   "groups_all_same": 0.953125
+  },
+  {
+   "pattern": "land",
+   "zero_payers": 0.17333984375,
+   "groups_all_same": 0.09375
+  },
+  {
+   "pattern": "result",
+   "zero_payers": 0.2265625,
+   "groups_all_same": 0.078125
+  },
+  {
+   "pattern": "side",
+   "zero_payers": 0.65771484375,
+   "groups_all_same": 0.0
+  },
+  {
+   "pattern": "remain|stay",
+   "zero_payers": 0.69140625,
+   "groups_all_same": 0.015625
+  },
+  {
+   "pattern": "state",
+   "zero_payers": 0.85107421875,
+   "groups_all_same": 0.109375
+  },
+  {
+   "pattern": "change",
+   "zero_payers": 0.94921875,
+   "groups_all_same": 0.53125
+  }
+ ],
+ "thresholds": {
+  "count": [
+   {
+    "at_most": 0,
+    "share": 0.0,
+    "groups_all_same": 1.0
+   },
+   {
+    "at_most": 1,
+    "share": 0.0,
+    "groups_all_same": 1.0
+   },
+   {
+    "at_most": 2,
+    "share": 0.0,
+    "groups_all_same": 1.0
+   },
+   {
+    "at_most": 3,
+    "share": 0.01171875,
+    "groups_all_same": 0.96875
+   },
+   {
+    "at_most": 4,
+    "share": 0.0263671875,
+    "groups_all_same": 0.953125
+   },
+   {
+    "at_most": 5,
+    "share": 0.0341796875,
+    "groups_all_same": 0.953125
+   },
+   {
+    "at_most": 6,
+    "share": 0.03564453125,
+    "groups_all_same": 0.953125
+   },
+   {
+    "at_most": 7,
+    "share": 0.037109375,
+    "groups_all_same": 0.90625
+   },
+   {
+    "at_most": 8,
+    "share": 0.20556640625,
+    "groups_all_same": 0.140625
+   },
+   {
+    "at_most": 9,
+    "share": 0.6826171875,
+    "groups_all_same": 0.03125
+   },
+   {
+    "at_most": 10,
+    "share": 0.8037109375,
+    "groups_all_same": 0.078125
+   },
+   {
+    "at_most": 11,
+    "share": 0.83935546875,
+    "groups_all_same": 0.140625
+   }
+  ],
+  "lines": [
+   {
+    "at_most": 0,
+    "share": 0.0,
+    "groups_all_same": 1.0
+   },
+   {
+    "at_most": 1,
+    "share": 0.0,
+    "groups_all_same": 1.0
+   },
+   {
+    "at_most": 2,
+    "share": 0.00927734375,
+    "groups_all_same": 0.96875
+   },
+   {
+    "at_most": 3,
+    "share": 0.03125,
+    "groups_all_same": 0.953125
+   },
+   {
+    "at_most": 4,
+    "share": 0.0400390625,
+    "groups_all_same": 0.953125
+   },
+   {
+    "at_most": 5,
+    "share": 0.04248046875,
+    "groups_all_same": 0.90625
+   },
+   {
+    "at_most": 6,
+    "share": 0.04248046875,
+    "groups_all_same": 0.90625
+   },
+   {
+    "at_most": 7,
+    "share": 0.04296875,
+    "groups_all_same": 0.890625
+   },
+   {
+    "at_most": 8,
+    "share": 0.32373046875,
+    "groups_all_same": 0.015625
+   },
+   {
+    "at_most": 9,
+    "share": 0.92578125,
+    "groups_all_same": 0.296875
+   },
+   {
+    "at_most": 10,
+    "share": 0.99267578125,
+    "groups_all_same": 0.875
+   },
+   {
+    "at_most": 11,
+    "share": 0.99609375,
+    "groups_all_same": 0.953125
+   }
+  ]
+ },
+ "early_counters": {
+  "state_lines": {
+   "runs": [
+    "h_H_s0",
+    "h_H_s1",
+    "h_H_s2"
+   ],
+   "n": 3840,
+   "zero_share": 0.0,
+   "paid_zero_share": 0.0,
+   "mean": 8.740104166666667
+  },
+  "lines": {
+   "runs": [
+    "s1_B_s0",
+    "s2_B_s1"
+   ],
+   "n": 2560,
+   "zero_share": 0.0,
+   "paid_zero_share": 0.0,
+   "mean": 8.613671875
+  }
+ },
+ "logprob": {
+  "side": {
+   "positions": 19795,
+   "answers": 2048,
+   "positions_per_answer": 9.66552734375,
+   "forms_written": [
+    [
+     " Heads",
+     9242
+    ],
+    [
+     " T",
+     8998
+    ],
+    [
+     "He",
+     864
+    ],
+    [
+     "T",
+     691
+    ]
+   ],
+   "p_written": {
+    "median": 0.9999997615814777,
+    "mean": 0.9772370136459906,
+    "p90": 1.0
+   },
+   "top_mass": {
+    "median": 1.0000000028184093,
+    "mean": 0.9999848681699152,
+    "p90": 1.0000000613310511
+   },
+   "escape_mass": {
+    "median": 2.0845196570588716e-07,
+    "mean": 0.02134833270952387,
+    "p90": 0.01484833240751466,
+    "share_over_0.1": 0.05087143217984339,
+    "share_over_0.5": 0.013437736802222783
+   },
+   "answer_escape_product": {
+    "median": 3.87599847709128e-57,
+    "mean": 1.6665842091866449e-16,
+    "p90": 1.4382403881425037e-45,
+    "share_over_1e-4": 0.0,
+    "share_over_1e-2": 0.0
+   },
+   "common_alternatives": [
+    [
+     " **",
+     533
+    ],
+    [
+     " Still",
+     417
+    ],
+    [
+     " the",
+     355
+    ],
+    [
+     " Flip",
+     235
+    ],
+    [
+     " The",
+     159
+    ],
+    [
+     " still",
+     148
+    ],
+    [
+     " Coin",
+     118
+    ],
+    [
+     " on",
+     105
+    ],
+    [
+     " \"",
+     92
+    ],
+    [
+     " Now",
+     59
+    ],
+    [
+     "which",
+     47
+    ],
+    [
+     " previous",
+     46
+    ],
+    [
+     " it",
+     35
+    ],
+    [
+     " From",
+     26
+    ],
+    [
+     " now",
+     21
+    ]
+   ]
+  },
+  "coin": {
+   "positions": 7363,
+   "answers": 2048,
+   "positions_per_answer": 3.59521484375,
+   "forms_written": [
+    [
+     " coin",
+     7238
+    ],
+    [
+     " Coin",
+     116
+    ],
+    [
+     "coin",
+     9
+    ]
+   ],
+   "p_written": {
+    "median": 0.9999997615814777,
+    "mean": 0.9429503030461549,
+    "p90": 1.0
+   },
+   "top_mass": {
+    "median": 1.0000000000145128,
+    "mean": 0.999987519059066,
+    "p90": 1.0000000415467425
+   },
+   "escape_mass": {
+    "median": 2.393630961949698e-07,
+    "mean": 0.05697827090393483,
+    "p90": 0.1843492332407308,
+    "share_over_0.1": 0.14504957218525058,
+    "share_over_0.5": 0.03802797772647019
+   },
+   "answer_escape_product": {
+    "median": 2.0659839263373113e-17,
+    "mean": 0.0073258362936967055,
+    "p90": 1.8120987748403363e-06,
+    "share_over_1e-4": 0.068359375,
+    "share_over_1e-2": 0.05126953125
+   },
+   "common_alternatives": [
+    [
+     " game",
+     1313
+    ],
+    [
+     " result",
+     361
+    ],
+    [
+     " sequence",
+     170
+    ],
+    [
+     " flip",
+     127
+    ],
+    [
+     " final",
+     91
+    ],
+    [
+     " first",
+     79
+    ],
+    [
+     " state",
+     60
+    ],
+    [
+     " initial",
+     52
+    ],
+    [
+     " flips",
+     45
+    ],
+    [
+     " current",
+     28
+    ],
+    [
+     " The",
+     25
+    ],
+    [
+     " same",
+     23
+    ],
+    [
+     " next",
+     13
+    ],
+    [
+     " starting",
+     12
+    ],
+    [
+     " T",
+     12
+    ]
+   ]
+  },
+  "flip": {
+   "positions": 13080,
+   "answers": 2048,
+   "positions_per_answer": 6.38671875,
+   "forms_written": [
+    [
+     " flip",
+     6969
+    ],
+    [
+     " flips",
+     3295
+    ],
+    [
+     " flipping",
+     1674
+    ],
+    [
+     " Flip",
+     720
+    ],
+    [
+     " flipped",
+     191
+    ],
+    [
+     "fl",
+     87
+    ],
+    [
+     "flip",
+     63
+    ],
+    [
+     " Fl",
+     62
+    ],
+    [
+     "Flip",
+     19
+    ]
+   ],
+   "p_written": {
+    "median": 0.9992191932199354,
+    "mean": 0.919689218437094,
+    "p90": 1.0
+   },
+   "top_mass": {
+    "median": 1.0000000000286748,
+    "mean": 0.9999827119916394,
+    "p90": 1.000000053179905
+   },
+   "escape_mass": {
+    "median": 0.0007224547988648164,
+    "mean": 0.07394475515321565,
+    "p90": 0.2502311406547273,
+    "share_over_0.1": 0.14204892966360858,
+    "share_over_0.5": 0.06376146788990826
+   },
+   "answer_escape_product": {
+    "median": 7.604401280147682e-19,
+    "mean": 2.2109413593747546e-06,
+    "p90": 1.6085741462933727e-09,
+    "share_over_1e-4": 0.001953125,
+    "share_over_1e-2": 0.0
+   },
+   "common_alternatives": [
+    [
+     " result",
+     566
+    ],
+    [
+     " one",
+     394
+    ],
+    [
+     " player",
+     337
+    ],
+    [
+     " to",
+     281
+    ],
+    [
+     " turn",
+     260
+    ],
+    [
+     " coin",
+     206
+    ],
+    [
+     ":",
+     193
+    ],
+    [
+     " ",
+     147
+    ],
+    [
+     " sequence",
+     105
+    ],
+    [
+     " T",
+     103
+    ],
+    [
+     " results",
+     103
+    ],
+    [
+     " (",
+     102
+    ],
+    [
+     " changes",
+     85
+    ],
+    [
+     " move",
+     79
+    ],
+    [
+     "'s",
+     76
+    ]
+   ]
+  }
+ }
+}

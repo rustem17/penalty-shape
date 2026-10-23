@@ -7,3 +7,4 @@ logs/
 .DS_Store
 results/**/scored.jsonl
 results/**/rollouts_*.jsonl
+results/**/positions.jsonl

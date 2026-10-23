@@ -5,7 +5,8 @@ present -[heads/tails in reasoning]; lines -lines/COIN_LINES_MEAN; length -max(0
 flag -[their coin monitor >= FLAG_THRESHOLD]; count -count/COIN_COUNT_MEAN; state_floor (cell H) 0 if no line says
 what happens to the coin (STATE_PROMPT), else -(0.5 + 0.5 * state_lines/COIN_STATE_MEAN).
 Monitors run only when the penalty needs them, and on every validation answer (all five: their coin monitor as
-printed, calibrated (Haiku) and calibrated (COIN_SONNET), side lines, state lines).
+printed, calibrated (Haiku) and calibrated (COIN_SONNET), side lines, state lines). run["counter"] (continuation runs)
+replaces the state-line counter by majority_lines with those keyword arguments (calls, model).
 Not computed = -1. Monitor failure after retries: R_cot = 0, unknown = 1.
 Run config from $PENALTY_RUN_CONFIG: {dir, model_path, penalty, ...}.
 """
@@ -16,7 +17,7 @@ import time
 from functools import partial
 from pathlib import Path
 
-from penalty_shape.coin import RATING_PROMPT_CALIBRATED, STATE_PROMPT, parse, rating, signals, tracking_lines
+from penalty_shape.coin import RATING_PROMPT_CALIBRATED, STATE_PROMPT, majority_lines, parse, rating, signals, tracking_lines
 from penalty_shape.config import (COIN_COUNT_MEAN, COIN_L_MIN, COIN_LENGTH_MEAN, COIN_LINES_MEAN, COIN_SONNET,
                                   COIN_STATE_MEAN, FLAG_THRESHOLD)
 
@@ -42,6 +43,12 @@ MONITORS = {"rating": rating, "lines": tracking_lines, "state_lines": partial(tr
             "rating_sonnet": partial(rating, model=COIN_SONNET, prompt=RATING_PROMPT_CALIBRATED)}
 
 
+def monitor(run, k):
+    if k == "state_lines" and "counter" in run:
+        return partial(majority_lines, prompt=STATE_PROMPT, **run["counter"])
+    return MONITORS[k]
+
+
 def penalty(kind, sig):
     return {"present": sig["present"], "count": sig["count"] / COIN_COUNT_MEAN, "lines": sig["lines"] / COIN_LINES_MEAN,
             "length": max(0, sig["length"] - COIN_L_MIN) / (COIN_LENGTH_MEAN - COIN_L_MIN), "flag": int(sig["rating"] >= FLAG_THRESHOLD),
@@ -52,7 +59,7 @@ async def score_sample(run, client, text, final, validation):
     p = parse(text)
     sig = {**signals(p["reasoning"]), **{k: -1 for k in MONITORS}}
     names = [k for k in MONITORS if validation or NEEDS.get(run["penalty"]) == k]
-    results = await asyncio.gather(*[MONITORS[k](client, p["reasoning"]) for k in names], return_exceptions=True)
+    results = await asyncio.gather(*[monitor(run, k)(client, p["reasoning"]) for k in names], return_exceptions=True)
     errors = {k: repr(r) for k, r in zip(names, results) if isinstance(r, BaseException)}
     sig.update({k: r[0] for k, r in zip(names, results) if k not in errors})
     usage = [r[1] for k, r in zip(names, results) if k not in errors]
